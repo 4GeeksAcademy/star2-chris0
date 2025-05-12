@@ -1,72 +1,102 @@
-db = SQLAlchemy()
+from flask import Flask, jsonify, request
+from flask_sqlalchemy import SQLAlchemy
 
+app = Flask(__name__)
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///starwars.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-favorite_planets = db.Table(
-    "favorite_planets",
-   
-    db.Column("user_id", db.ForeignKey("user.id"), primary_key=True),
-    db.Column("planet_id", db.ForeignKey("planet.id"), primary_key=True)
-)
-favorite_characters = db.Table(
-    "favorite_characters",
-   
-    db.Column("user_id", db.ForeignKey("user.id"), primary_key=True),
-    db.Column("character_id", db.ForeignKey("character.id"), primary_key=True)
-)
+db = SQLAlchemy(app)
 
-class User(db.Model):
-    __tablename__ = 'user'
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(250), nullable=False)
-    password = db.Column(db.String(250), nullable=False)
-    favorite_planets = db.relationship("Planet", secondary=favorite_planets, lazy='subquery')
-    favorite_characters = db.relationship("Character", secondary=favorite_characters, lazy='subquery')
+# Import your models here (User, Planet, Character, favorite_planets, favorite_characters)
+# Assuming your models are already declared as provided earlier
 
-    def serialize(self):
-        return {
-            "id": self.id,
-            "username": self.username,
-            "favorite_planets": [planet.serialize() for planet in self.favorite_planets],
-             "favorite_characters": [character.serialize() for character in self.favorite_characters]
+# ---------- PEOPLE ----------
+@app.route('/people', methods=['GET'])
+def get_all_people():
+    people = Character.query.all()
+    return jsonify([person.serialize() for person in people]), 200
 
-            # do not serialize the password, its a security breach
-        }
+@app.route('/people/<int:people_id>', methods=['GET'])
+def get_one_person(people_id):
+    person = Character.query.get(people_id)
+    if not person:
+        return jsonify({"msg": "Character not found"}), 404
+    return jsonify(person.serialize()), 200
 
+# ---------- PLANETS ----------
+@app.route('/planets', methods=['GET'])
+def get_all_planets():
+    planets = Planet.query.all()
+    return jsonify([planet.serialize() for planet in planets]), 200
 
-class Planet(db.Model):
-    __tablename__ = 'planet'
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(250), nullable=False)
-    climate = db.Column(db.String(250))
-    terrain = db.Column(db.String(250))
-    population = db.Column(db.Integer)
-   
+@app.route('/planets/<int:planet_id>', methods=['GET'])
+def get_one_planet(planet_id):
+    planet = Planet.query.get(planet_id)
+    if not planet:
+        return jsonify({"msg": "Planet not found"}), 404
+    return jsonify(planet.serialize()), 200
 
-    def serialize(self):
-        return {
-            "id": self.id,
-            "name": self.name,
-            "climate": self.climate,
-            "terrain": self.terrain,
-            "population": self.population,
-           
-            # do not serialize the password, its a security breach
-        }
+# ---------- USERS ----------
+@app.route('/users', methods=['GET'])
+def get_all_users():
+    users = User.query.all()
+    return jsonify([user.serialize() for user in users]), 200
 
-class Character(db.Model):
-    __tablename__ = 'character'
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(250), nullable=False)
-    height = db.Column(db.Integer)
-    hair_color = db.Column(db.String(250))
-    eye_color = db.Column(db.String(250))
-    gender = db.Column(db.String(250))
-   
-    def serialize(self):
-        return {
-            "id": self.id,
-            "name": self.name,
-            "height": self.height,
-            "hair_color": self.hair_color,
-            "eye_color": self.eye_color,
-            "gender": self.gender,}
+# ---------- FAVORITES ----------
+@app.route('/users/favorites', methods=['GET'])
+def get_user_favorites():
+    user = User.query.get(1)  # Assuming user_id = 1
+    if not user:
+        return jsonify({"msg": "User not found"}), 404
+    return jsonify({
+        "favorite_planets": [planet.serialize() for planet in user.favorite_planets],
+        "favorite_characters": [character.serialize() for character in user.favorite_characters]
+    }), 200
+
+@app.route('/favorite/planet/<int:planet_id>', methods=['POST'])
+def add_favorite_planet(planet_id):
+    user = User.query.get(1)
+    planet = Planet.query.get(planet_id)
+    if not user or not planet:
+        return jsonify({"msg": "User or Planet not found"}), 404
+    if planet not in user.favorite_planets:
+        user.favorite_planets.append(planet)
+        db.session.commit()
+    return jsonify({"msg": "Planet added to favorites"}), 200
+
+@app.route('/favorite/people/<int:people_id>', methods=['POST'])
+def add_favorite_person(people_id):
+    user = User.query.get(1)
+    character = Character.query.get(people_id)
+    if not user or not character:
+        return jsonify({"msg": "User or Character not found"}), 404
+    if character not in user.favorite_characters:
+        user.favorite_characters.append(character)
+        db.session.commit()
+    return jsonify({"msg": "Character added to favorites"}), 200
+
+@app.route('/favorite/planet/<int:planet_id>', methods=['DELETE'])
+def remove_favorite_planet(planet_id):
+    user = User.query.get(1)
+    planet = Planet.query.get(planet_id)
+    if not user or not planet:
+        return jsonify({"msg": "User or Planet not found"}), 404
+    if planet in user.favorite_planets:
+        user.favorite_planets.remove(planet)
+        db.session.commit()
+    return jsonify({"msg": "Planet removed from favorites"}), 200
+
+@app.route('/favorite/people/<int:people_id>', methods=['DELETE'])
+def remove_favorite_person(people_id):
+    user = User.query.get(1)
+    character = Character.query.get(people_id)
+    if not user or not character:
+        return jsonify({"msg": "User or Character not found"}), 404
+    if character in user.favorite_characters:
+        user.favorite_characters.remove(character)
+        db.session.commit()
+    return jsonify({"msg": "Character removed from favorites"}), 200
+
+# ---------- Run Server ----------
+if __name__ == '__main__':
+    app.run(debug=True)
